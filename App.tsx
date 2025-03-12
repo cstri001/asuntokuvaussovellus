@@ -1,16 +1,25 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, SafeAreaView, Image } from 'react-native';
+import { StyleSheet, View, SafeAreaView, Image } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { Appbar, IconButton } from 'react-native-paper';
-import { CameraView, CameraType, useCameraPermissions, CameraCapturedPicture } from 'expo-camera';
-import {useRef, useState} from 'react';
+import { Appbar, IconButton, Portal, Dialog, Button, Text, TextInput, PaperProvider } from 'react-native-paper';
+import { CameraView, CameraType, CameraPictureOptions, useCameraPermissions, CameraCapturedPicture } from 'expo-camera';
+import {useCallback, useRef, useState} from 'react';
 
+type PhotoInfo = {
+  photo?: CameraCapturedPicture
+  title?: string
+}
 
 const App : React.FC = () : React.ReactElement => {
   const [permission, requestPermission] = useCameraPermissions();
   const ref = useRef<CameraView>(null)
   const [pictureMode, setPictureMode] = useState<boolean | undefined>(false)
-  const [photoUri, setPhotoUri] = useState<string | undefined>()
+  const [visible, setVisible] = useState<boolean>(false)
+  const [title, setTitle] = useState<string>('')
+  const [photoInfo, setPhotoInfo] = useState<PhotoInfo>({
+                                                          title: 'Nimetön kuva'
+                                                        })
+                                                      
 
   // if (!permission?.granted) {
   //   return (
@@ -23,28 +32,85 @@ const App : React.FC = () : React.ReactElement => {
   //   )
   // }
 
+  const showDialog = () => setVisible(true)
+  const hideDialog = () => setVisible(false)
+
+  /* 
+    inside dialog, defaultValue is used with TextInput component instead of "value" prop to prevent 
+    annoying flickering/problems with typing in the text. With "value" and 
+    "onChangeText={setTitle}" it jitters weirdly and makes typing hard.
+  */  
+  const dialog = () => {
+    return (
+      <Portal>
+        <Dialog visible={visible} onDismiss={hideDialog}>
+          <Dialog.Title>Nimeä kuva</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              autoFocus={true} 
+              label='Kuvan nimi'
+              defaultValue={title}
+              onChangeText={title => setTitle(title)}
+              maxLength={30}
+              />
+            <Dialog.Actions>
+              <Button onPress={cancelPictureMode}>Peruuta</Button>
+              <Button onPress={saveTitle}>Tallenna</Button>
+            </Dialog.Actions>
+          </Dialog.Content>
+        </Dialog>
+      </Portal>
+    )
+  }
+  
+
+  const saveTitle = () => {
+    setPhotoInfo({
+      ...photoInfo,
+      title: title
+    })
+    setTitle('')
+    hideDialog()
+  }
+
   const startCamera = async () => {
     await requestPermission()
     setPictureMode(permission?.granted)
   }
   
-  const takePicture = async () => {
-    const photo = await ref.current?.takePictureAsync()
-    setPhotoUri(photo?.uri)
+  const takePicture = async () : Promise<void> => {
+
+    const options: CameraPictureOptions = {
+      shutterSound: false
+    }
+
+    const photo = await ref.current?.takePictureAsync(options)
+
+    setPhotoInfo({...photoInfo, photo: photo, title: title})
+    showDialog();
     setPictureMode(false)
   }
 
   const cancelPictureMode = () => {
     setPictureMode(false)
+    setTitle('')
+    setPhotoInfo({})
+    hideDialog()
   }
 
   const showPhoto = () => {
     return (
-      <View>
-        <Image
-          source={{uri: photoUri}}
-          style={styles.photo}
-        />
+      <View style={styles.photoWrapper}>
+        <View style={styles.photoContainer}>  
+          <Image
+            source={{uri: photoInfo.photo!.uri}}
+            style={styles.photo}
+            resizeMode='contain'
+            />      
+          <Text variant='titleLarge'>
+            {photoInfo.title}
+          </Text>
+        </View>
       </View>
     )
   }
@@ -53,6 +119,7 @@ const App : React.FC = () : React.ReactElement => {
   const cameraView = () => {
     return (
       <CameraView ref={ref} style={styles.cameraView}>
+        
         <View style={styles.buttonWrap}>
           <View style={styles.buttonContainer}>
             <IconButton
@@ -75,22 +142,28 @@ const App : React.FC = () : React.ReactElement => {
 
   const startView = () => {
     return (
-      <>
+      <PaperProvider>
         <Appbar.Header>
           <Appbar.Content title='Lisää kuva' />
           <IconButton 
             icon='camera'
             onPress={startCamera}
-            size={20}
+            size={35}
           />
         </Appbar.Header>
         {
-          (Boolean(photoUri)
+          (Boolean(photoInfo.photo?.uri)
             ? showPhoto()
             : null
           )
         }
-      </>
+        {
+          (Boolean(visible)
+            ? dialog()
+            : null
+          )
+        }
+      </PaperProvider>
     )
   }
 
@@ -136,8 +209,20 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
-    height: '100%',
-    
+    aspectRatio: 1,
+
+  },
+  photoWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'column'
+  },
+  photoContainer: {
+    flex: 1,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center'
   }
 });
 
