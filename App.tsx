@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, SafeAreaView, Image } from 'react-native';
+import { StyleSheet, View, SafeAreaView, Image, Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { Appbar, IconButton, Portal, Dialog, Button, Text, TextInput, PaperProvider } from 'react-native-paper';
 import { CameraView, CameraType, CameraPictureOptions, useCameraPermissions, CameraCapturedPicture } from 'expo-camera';
@@ -17,20 +17,9 @@ const App : React.FC = () : React.ReactElement => {
   const [visible, setVisible] = useState<boolean>(false)
   const [title, setTitle] = useState<string>('')
   const [photoInfo, setPhotoInfo] = useState<PhotoInfo>({
-                                                          title: 'Nimetön kuva'
+                                                          title: 'Nimetön'
                                                         })
                                                       
-
-  // if (!permission?.granted) {
-  //   return (
-  //     <View>
-  //       <Text>
-  //         Anna lupa kameran käyttöön
-  //       </Text>
-
-  //     </View>
-  //   )
-  // }
 
   const showDialog = () => setVisible(true)
   const hideDialog = () => setVisible(false)
@@ -62,6 +51,42 @@ const App : React.FC = () : React.ReactElement => {
       </Portal>
     )
   }
+
+  const normalizeFilename = (title : string) : string => {
+    const normalizedFilename = title.replace(/ /g, '_')
+    return normalizedFilename
+  }
+
+  const uploadPhoto = async () : Promise<void> => {
+
+    if (!photoInfo.photo) return;
+
+    const photoData = new FormData();
+
+    const response = await fetch(photoInfo.photo.uri)
+    const blob = await response.blob()
+
+    photoData.append('photo', blob, `${normalizeFilename(photoInfo.title!)}.jpg`)
+
+    // IP address is needed here to access from other devices
+    try {
+      const response = await fetch('http://192.168.0.105:3001/upload', {
+        method: 'POST',
+        body: photoData,
+        
+      })
+
+      if (response.ok) {
+        setPhotoInfo({})
+        setTitle('')
+      } else {
+        console.log('Kuvan lataus epäonnistui')
+      }
+    } catch (e : any) {
+      console.log('Virhe ladattaessa kuvaa. Palvelimeen ei saatu yhteyttä.', e)
+    }
+    
+  }
   
 
   const saveTitle = () => {
@@ -81,7 +106,8 @@ const App : React.FC = () : React.ReactElement => {
   const takePicture = async () : Promise<void> => {
 
     const options: CameraPictureOptions = {
-      shutterSound: false
+      shutterSound: false,
+      imageType: 'jpg'
     }
 
     const photo = await ref.current?.takePictureAsync(options)
@@ -106,10 +132,15 @@ const App : React.FC = () : React.ReactElement => {
             source={{uri: photoInfo.photo!.uri}}
             style={styles.photo}
             resizeMode='contain'
-            />      
-          <Text variant='titleLarge'>
-            {photoInfo.title}
-          </Text>
+            />   
+          <View style={styles.photoInfo}>
+            <Text variant='titleLarge'>
+              {photoInfo.title}
+            </Text>
+            <Button icon='send' mode='elevated' onPress={uploadPhoto}>
+              Lähetä palvelimelle
+            </Button>
+          </View>    
         </View>
       </View>
     )
@@ -174,6 +205,8 @@ const App : React.FC = () : React.ReactElement => {
   )
 }
 
+const windowWidth = Dimensions.get('screen').width
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -209,19 +242,30 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
-    aspectRatio: 1,
+    maxWidth: 600,
+    aspectRatio: 1
 
   },
   photoWrapper: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    maxHeight: 600,
+
   },
   photoContainer: {
     flex: 1,
+    marginTop: 20,
+    width: windowWidth,
+    height: 300,
     flexDirection: 'column',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    alignItems: 'center'
+  },
+  photoInfo: {
+    flex: 3,
+    justifyContent: 'flex-start',
     alignItems: 'center'
   }
 });
